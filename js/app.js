@@ -8,7 +8,7 @@ const GREETING = "LUXION online. How can I assist you today?";
 // After you create your Worker, paste its URL below (no trailing slash).
 // Example: "https://luxion-worker.yourname.workers.dev"
 const CONFIG = {
-  WORKER_URL: "",
+  WORKER_URL: "https://luxion-worker.yourname.workers.dev",
   MAX_CONTEXT_MESSAGES: 20
 };
 
