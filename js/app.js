@@ -1,12 +1,15 @@
-// LUXION AI - Phase 1
-// UI only: no AI backend yet. Messages are kept in memory for this page session.
-// The AI backend (Cloudflare Worker) is added in Phase 2.
+// LUXION AI - Phase 2
+// Chat now talks to a real AI through your Cloudflare Worker.
+// History is still kept only in this browser tab (cloud history comes in Phase 3).
 
 const GREETING = "LUXION online. How can I assist you today?";
 
-// ---- Config (Phase 2 will put your Worker URL here) ----
+// ---- Config ----
+// After you create your Worker, paste its URL below (no trailing slash).
+// Example: "https://luxion-worker.yourname.workers.dev"
 const CONFIG = {
-  WORKER_URL: "" // empty = backend not connected yet
+  WORKER_URL: "",
+  MAX_CONTEXT_MESSAGES: 20
 };
 
 // ---- Elements ----
@@ -17,6 +20,7 @@ const menuBtn = $("menuBtn");
 const chat = $("chat");
 const input = $("input");
 const composer = $("composer");
+const sendBtn = $("sendBtn");
 const orb = $("orb");
 const orbLabel = $("orbLabel");
 const notice = $("notice");
@@ -26,8 +30,10 @@ const statusDot = $("statusDot");
 const statusText = $("statusText");
 
 // ---- State ----
-let conversations = []; // { id, title, messages: [{role, content}] }
+let conversations = []; // { id, title, messages: [{role: "user"|"ai", content}] }
 let current = null;
+let busy = false;
+let controller = null;
 
 // ---- Helpers ----
 function newId() {
@@ -49,6 +55,22 @@ function clearNotice() {
   notice.textContent = "";
 }
 
+function setBusy(on) {
+  busy = on;
+  sendBtn.textContent = on ? "Stop" : "Send";
+  sendBtn.setAttribute("aria-label", on ? "Stop generating" : "Send message");
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = "Copied";
+  } catch {
+    btn.textContent = "Copy failed";
+  }
+  setTimeout(() => (btn.textContent = "Copy"), 1500);
+}
+
 function addBubble(role, text) {
   const div = document.createElement("div");
   div.className = "msg " + role;
@@ -59,10 +81,21 @@ function addBubble(role, text) {
     div.appendChild(meta);
   }
   const body = document.createElement("div");
-  body.textContent = text; // textContent keeps user text safe (no HTML injection)
+  body.textContent = text; // textContent keeps text safe (no HTML injection)
   div.appendChild(body);
+
+  if (role === "ai" && text !== GREETING) {
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "copy-btn";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", () => copyText(text, copy));
+    div.appendChild(copy);
+  }
+
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
+  return div;
 }
 
 function renderHistory() {
@@ -81,6 +114,7 @@ function renderHistory() {
     b.textContent = c.title;
     if (current && c.id === current.id) b.setAttribute("aria-current", "true");
     b.addEventListener("click", () => {
+      if (busy) return;
       openConversation(c.id);
       closeDrawer();
     });
@@ -95,11 +129,13 @@ function openConversation(id) {
   clearNotice();
   if (!current) return;
   chatTitle.textContent = current.title;
+  setOrb("idle", "Idle");
   for (const m of current.messages) addBubble(m.role, m.content);
   renderHistory();
 }
 
 function startNewChat() {
+  if (busy && controller) controller.abort();
   current = null;
   chat.textContent = "";
   clearNotice();
@@ -111,18 +147,32 @@ function startNewChat() {
 }
 
 // ---- Backend status ----
-function updateStatus() {
-  if (CONFIG.WORKER_URL) {
-    statusDot.className = "dot dot-on";
-    statusText.textContent = "Backend: configured (untested)";
-  } else {
+async function checkBackend() {
+  if (!CONFIG.WORKER_URL) {
     statusDot.className = "dot dot-off";
     statusText.textContent = "Backend: not connected";
+    return;
+  }
+  statusDot.className = "dot dot-off";
+  statusText.textContent = "Backend: checking...";
+  try {
+    const res = await fetch(CONFIG.WORKER_URL + "/health");
+    const data = await res.json();
+    if (data.ok && data.keyConfigured && data.modelConfigured) {
+      statusDot.className = "dot dot-on";
+      statusText.textContent = "Backend: online";
+    } else {
+      statusDot.className = "dot dot-off";
+      statusText.textContent = "Backend: setup incomplete";
+    }
+  } catch {
+    statusDot.className = "dot dot-off";
+    statusText.textContent = "Backend: unreachable";
   }
 }
 
 // ---- Sending ----
-function handleSend(text) {
+async function handleSend(text) {
   if (!current) {
     current = { id: newId(), title: text.slice(0, 40), messages: [] };
     conversations.unshift(current);
@@ -133,21 +183,74 @@ function handleSend(text) {
   renderHistory();
 
   if (!CONFIG.WORKER_URL) {
-    // Honest state: there is no AI yet, so we do NOT fake a reply.
     setOrb("error", "Offline");
-    const msg = "AI backend is not connected yet. Phase 2 adds the Cloudflare Worker that talks to a real AI model.";
+    const msg = "AI backend is not connected. Set WORKER_URL in js/app.js.";
     showNotice(msg);
     addBubble("system", msg);
+    current.messages.pop(); // do not keep an unanswered message in context
     return;
   }
 
-  // Phase 2 will implement the real request here.
-  setOrb("error", "Offline");
-  showNotice("Backend URL is set but chat is not implemented until Phase 2.");
+  setBusy(true);
+  setOrb("thinking", "Thinking");
+  const loading = addBubble("system", "LUXION is thinking...");
+  controller = new AbortController();
+
+  const payload = current.messages
+    .slice(-CONFIG.MAX_CONTEXT_MESSAGES)
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  try {
+    const res = await fetch(CONFIG.WORKER_URL + "/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: payload }),
+      signal: controller.signal
+    });
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      /* non-JSON response */
+    }
+
+    if (!res.ok || !data || !data.reply) {
+      const reason = (data && data.error) || "Request failed (" + res.status + ").";
+      throw new Error(reason);
+    }
+
+    loading.remove();
+    current.messages.push({ role: "ai", content: data.reply });
+    addBubble("ai", data.reply);
+    setOrb("idle", "Idle");
+  } catch (err) {
+    loading.remove();
+    if (err.name === "AbortError") {
+      current.messages.pop(); // drop the unanswered user message from context
+      addBubble("system", "Generation stopped.");
+      setOrb("idle", "Idle");
+    } else {
+      current.messages.pop();
+      const msg = err instanceof TypeError
+        ? "Network error: could not reach the backend."
+        : err.message;
+      showNotice(msg);
+      addBubble("system", msg);
+      setOrb("error", "Error");
+    }
+  } finally {
+    setBusy(false);
+    controller = null;
+  }
 }
 
 composer.addEventListener("submit", (e) => {
   e.preventDefault();
+  if (busy) {
+    if (controller) controller.abort();
+    return;
+  }
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
@@ -160,7 +263,7 @@ composer.addEventListener("submit", (e) => {
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    composer.requestSubmit();
+    if (!busy) composer.requestSubmit();
   }
 });
 
@@ -197,7 +300,7 @@ function startParticles() {
   const canvas = $("particles");
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const ctx = canvas.getContext("2d");
-  const COUNT = window.innerWidth < 800 ? 28 : 55; // fewer on phones for speed
+  const COUNT = window.innerWidth < 800 ? 28 : 55;
   let w, h, pts;
 
   function resize() {
@@ -220,8 +323,10 @@ function startParticles() {
       ctx.clearRect(0, 0, w, h);
       for (const p of pts) {
         p.x += p.vx; p.y += p.vy;
-        if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
-        if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+        if (p.x < 0) p.x = w;
+        if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h;
+        if (p.y > h) p.y = 0;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(" + p.c + ",0.7)";
@@ -234,6 +339,6 @@ function startParticles() {
 }
 
 // ---- Init ----
-updateStatus();
+checkBackend();
 startParticles();
 startNewChat();
