@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05050a">
+  <meta name="description" content="LUXION AI - Beyond Intelligence. Beyond Limits.">
+  <title>LUXION AI</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="particles" aria-hidden="true"></canvas>
+
+  <div class="app" id="app">
+    <!-- Sidebar / mobile drawer -->
+    <aside class="sidebar" id="sidebar" aria-label="Conversations">
+      <div class="brand">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <div>
+          <div class="brand-name">LUXION AI</div>
+          <div class="brand-tag">Beyond Intelligence. Beyond Limits.</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="newChatBtn" type="button">+ New Chat</button>
+      <div class="history-title">History</div>
+      <ul class="history" id="historyList" aria-live="polite"></ul>
+      <div class="sidebar-foot">
+        <button class="btn btn-ghost" id="settingsBtn" type="button" disabled title="Coming in Phase 3">Settings</button>
+        <button class="btn btn-ghost" id="profileBtn" type="button" disabled title="Coming in Phase 3">Profile</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Open conversations" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
+        <div class="topbar-title" id="chatTitle">New conversation</div>
+        <div class="status" id="status" role="status" aria-live="polite">
+          <span class="dot dot-off" id="statusDot"></span>
+          <span id="statusText">Backend: not connected</span>
+        </div>
+      </header>
+
+      <section class="core-wrap" aria-label="LUXION AI Core">
+        <div class="orb" id="orb" data-state="idle" role="img" aria-label="LUXION AI Core, idle">
+          <div class="orb-ring r1"></div>
+          <div class="orb-ring r2"></div>
+          <div class="orb-core"></div>
+        </div>
+        <div class="orb-label" id="orbLabel">Idle</div>
+      </section>
+
+      <section class="chat" id="chat" aria-live="polite" aria-label="Conversation"></section>
+
+      <div class="notice" id="notice" role="alert" hidden></div>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <button class="icon-btn" type="button" id="attachBtn" aria-label="Attach file (coming in Phase 4)" disabled title="Coming in Phase 4">&#128206;</button>
+        <button class="icon-btn" type="button" id="micBtn" aria-label="Voice input (coming in Phase 4)" disabled title="Coming in Phase 4">&#127908;</button>
+        <label for="input" class="sr-only">Message LUXION</label>
+        <textarea id="input" rows="1" placeholder="Message LUXION..." maxlength="8000"></textarea>
+        <button class="btn btn-primary send" type="submit" id="sendBtn" aria-label="Send message">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
