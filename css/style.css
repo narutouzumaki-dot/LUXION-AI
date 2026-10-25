@@ -176,3 +176,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Phase 2 additions */
+.copy-btn {
+  margin-top: 8px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid var(--panel-border); border-radius: 10px;
+}
+.copy-btn:hover { color: var(--text); border-color: var(--cyan); }
