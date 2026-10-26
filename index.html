@@ -25,8 +25,8 @@
       <div class="history-title">History</div>
       <ul class="history" id="historyList" aria-live="polite"></ul>
       <div class="sidebar-foot">
-        <button class="btn btn-ghost" id="settingsBtn" type="button" disabled title="Coming in Phase 3">Settings</button>
-        <button class="btn btn-ghost" id="profileBtn" type="button" disabled title="Coming in Phase 3">Profile</button>
+        <button class="btn btn-ghost" id="settingsBtn" type="button">Settings</button>
+        <button class="btn btn-ghost" id="profileBtn" type="button">Profile</button>
       </div>
     </aside>
     <div class="scrim" id="scrim" hidden></div>
@@ -38,7 +38,7 @@
         <div class="topbar-title" id="chatTitle">New conversation</div>
         <div class="status" id="status" role="status" aria-live="polite">
           <span class="dot dot-off" id="statusDot"></span>
-          <span id="statusText">Backend: not connected</span>
+          <span id="statusText">Backend: checking...</span>
         </div>
       </header>
 
@@ -63,6 +63,73 @@
         <button class="btn btn-primary send" type="submit" id="sendBtn" aria-label="Send message">Send</button>
       </form>
     </main>
+  </div>
+
+  <!-- Login / sign-up / reset overlay -->
+  <div class="overlay" id="authOverlay" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="brand card-brand">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <div class="brand-name">LUXION AI</div>
+      </div>
+      <h2 id="authTitle">Log in to LUXION</h2>
+      <div class="tabs" id="authTabs" role="tablist">
+        <button type="button" class="tab" id="tabLogin" role="tab" aria-selected="true">Log in</button>
+        <button type="button" class="tab" id="tabSignup" role="tab" aria-selected="false">Sign up</button>
+      </div>
+      <form id="authForm" novalidate>
+        <div class="field" id="nameRow" hidden>
+          <label for="authName">Display name</label>
+          <input id="authName" type="text" maxlength="60" autocomplete="nickname">
+        </div>
+        <div class="field" id="emailRow">
+          <label for="authEmail">Email</label>
+          <input id="authEmail" type="email" autocomplete="email" inputmode="email">
+        </div>
+        <div class="field" id="passRow">
+          <label for="authPass">Password</label>
+          <input id="authPass" type="password" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary full" id="authSubmit" type="submit">Log in</button>
+        <div class="msg-line" id="authMsg" role="status" aria-live="polite"></div>
+        <div class="links">
+          <button type="button" class="link" id="forgotBtn">Forgot password?</button>
+          <button type="button" class="link" id="backBtn" hidden>Back to log in</button>
+        </div>
+      </form>
+      <p class="fine">Your password is handled by Supabase Auth. LUXION never sees or stores it.</p>
+    </div>
+  </div>
+
+  <!-- Account / settings overlay -->
+  <div class="overlay" id="accountOverlay" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+      <h2 id="accTitle">Account &amp; settings</h2>
+      <div class="field">
+        <label for="accEmail">Email</label>
+        <input id="accEmail" type="email" readonly>
+      </div>
+      <form id="accForm" novalidate>
+        <div class="field">
+          <label for="accName">Display name <span class="tag">saved to cloud</span></label>
+          <input id="accName" type="text" maxlength="60" autocomplete="nickname">
+        </div>
+        <button class="btn btn-primary full" type="submit">Save display name</button>
+      </form>
+      <div class="msg-line" id="accMsg" role="status" aria-live="polite"></div>
+
+      <h3>Chat history <span class="tag">saved to cloud</span></h3>
+      <button class="btn btn-danger full" id="deleteAllBtn" type="button">Delete all my chats</button>
+
+      <h3>Privacy</h3>
+      <p class="fine">Your chats are stored in your private Supabase database, readable only by your account. Messages you send are also sent to Google Gemini to generate replies. Do not share passwords or secrets in chat.</p>
+      <p class="fine">Account deletion is not available in the app yet. To delete your account, ask the project owner to remove it in the Supabase dashboard (Authentication &rarr; Users).</p>
+
+      <div class="row">
+        <button class="btn" id="signOutBtn" type="button">Sign out</button>
+        <button class="btn" id="accCloseBtn" type="button">Close</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="js/app.js"></script>
