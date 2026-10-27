@@ -49,6 +49,10 @@
           <div class="orb-core"></div>
         </div>
         <div class="orb-label" id="orbLabel">Idle</div>
+        <div class="voice-controls">
+          <button class="chip" id="speakToggle" type="button" aria-pressed="false">Voice replies: off</button>
+          <button class="chip" id="stopSpeakBtn" type="button" hidden>&#9632; Stop speaking</button>
+        </div>
       </section>
 
       <section class="chat" id="chat" aria-live="polite" aria-label="Conversation"></section>
@@ -57,7 +61,7 @@
 
       <form class="composer" id="composer" autocomplete="off">
         <button class="icon-btn" type="button" id="attachBtn" aria-label="Attach file (coming in Phase 4)" disabled title="Coming in Phase 4">&#128206;</button>
-        <button class="icon-btn" type="button" id="micBtn" aria-label="Voice input (coming in Phase 4)" disabled title="Coming in Phase 4">&#127908;</button>
+        <button class="icon-btn" type="button" id="micBtn" aria-label="Start voice input" aria-pressed="false">&#127908;</button>
         <label for="input" class="sr-only">Message LUXION</label>
         <textarea id="input" rows="1" placeholder="Message LUXION..." maxlength="8000"></textarea>
         <button class="btn btn-primary send" type="submit" id="sendBtn" aria-label="Send message">Send</button>
@@ -118,11 +122,39 @@
       </form>
       <div class="msg-line" id="accMsg" role="status" aria-live="polite"></div>
 
+      <h3>Voice <span class="tag">this device only</span></h3>
+      <p class="fine" id="vsNote" hidden></p>
+      <label class="check"><input type="checkbox" id="vsSpeak"> Speak AI replies aloud</label>
+      <div class="field">
+        <label for="vsVoice">Voice</label>
+        <select id="vsVoice"></select>
+      </div>
+      <div class="field">
+        <label for="vsRate">Speech speed <span id="vsRateVal"></span></label>
+        <input id="vsRate" type="range" min="0.5" max="2" step="0.1">
+      </div>
+      <div class="field">
+        <label for="vsVol">Volume <span id="vsVolVal"></span></label>
+        <input id="vsVol" type="range" min="0" max="1" step="0.1">
+      </div>
+      <div class="field">
+        <label for="vsLang">Voice input language</label>
+        <select id="vsLang">
+          <option value="">Browser default</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="en-IN">English (India)</option>
+          <option value="hi-IN">Hindi (India)</option>
+        </select>
+      </div>
+      <button class="btn full" id="vsTest" type="button">Test voice</button>
+
       <h3>Chat history <span class="tag">saved to cloud</span></h3>
       <button class="btn btn-danger full" id="deleteAllBtn" type="button">Delete all my chats</button>
 
       <h3>Privacy</h3>
       <p class="fine">Your chats are stored in your private Supabase database, readable only by your account. Messages you send are also sent to Google Gemini to generate replies. Do not share passwords or secrets in chat.</p>
+      <p class="fine">Voice input uses your browser's speech service: in Chrome, your microphone audio is sent to Google to be turned into text. It only listens after you tap the mic, and you can stop it any time.</p>
       <p class="fine">Account deletion is not available in the app yet. To delete your account, ask the project owner to remove it in the Supabase dashboard (Authentication &rarr; Users).</p>
 
       <div class="row">
