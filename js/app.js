@@ -4,6 +4,7 @@
 import { WORKER_URL, MAX_CONTEXT_MESSAGES } from "./config.js";
 import * as auth from "./auth.js";
 import * as db from "./db.js";
+import * as voice from "./voice.js";
 
 const GREETING = "LUXION online. How can I assist you today?";
 
@@ -46,6 +47,18 @@ const accEmail = $("accEmail");
 const accName = $("accName");
 const accMsg = $("accMsg");
 
+const micBtn = $("micBtn");
+const speakToggle = $("speakToggle");
+const stopSpeakBtn = $("stopSpeakBtn");
+const vsSpeak = $("vsSpeak");
+const vsVoice = $("vsVoice");
+const vsRate = $("vsRate");
+const vsRateVal = $("vsRateVal");
+const vsVol = $("vsVol");
+const vsVolVal = $("vsVolVal");
+const vsLang = $("vsLang");
+const vsNote = $("vsNote");
+
 // ---- State ----
 let user = null;
 let displayName = "";
@@ -55,6 +68,10 @@ let busy = false;
 let controller = null;
 let recovering = false;
 let authMode = "login";
+let vs = voice.loadSettings(); // voice settings (this device only)
+let recognizer = null;
+let listening = false;
+let speaking = false;
 
 // ---- Helpers ----
 function setOrb(state, label) {
@@ -110,6 +127,16 @@ function addBubble(role, text) {
     copy.textContent = "Copy";
     copy.addEventListener("click", () => copyText(text, copy));
     div.appendChild(copy);
+
+    const listen = document.createElement("button");
+    listen.type = "button";
+    listen.className = "copy-btn";
+    listen.textContent = "Listen";
+    listen.addEventListener("click", () => {
+      if (!voice.canSpeak) return showNotice("Spoken replies are not supported in this browser.");
+      speakText(text);
+    });
+    div.appendChild(listen);
   }
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
@@ -281,6 +308,8 @@ async function handleSend(text) {
     current = { id: null, title: text.slice(0, 40), updated_at: null, messages: [] };
     chatTitle.textContent = current.title;
   }
+  stopListening();
+  voice.stopSpeaking();
   const conv = current;
   const userAt = new Date().toISOString();
   conv.messages.push({ role: "user", content: text });
@@ -322,6 +351,7 @@ async function handleSend(text) {
     conv.messages.push({ role: "ai", content: data.reply });
     if (current === conv) addBubble("ai", data.reply);
     setOrb("idle", "Idle");
+    if (vs.speakReplies && current === conv) speakText(data.reply);
     await persist(conv, text, userAt, data.reply, aiAt);
   } catch (err) {
     loading.remove();
@@ -486,6 +516,7 @@ function openAccount() {
   accEmail.value = user.email || "";
   accName.value = displayName;
   setMsg(accMsg, "");
+  syncVoiceSettingsUi();
   accountOverlay.hidden = false;
   closeDrawer();
   accName.focus();
@@ -552,6 +583,8 @@ async function onSignedIn(session, force) {
 }
 
 function onSignedOut() {
+  voice.stopSpeaking();
+  stopListening();
   if (busy && controller) controller.abort();
   user = null;
   displayName = "";
@@ -579,6 +612,126 @@ auth.onAuthChange((event, session) => {
     }
   }, 0);
 });
+
+// ---- Voice ----
+function updateVoiceUi() {
+  speakToggle.textContent = vs.speakReplies ? "\u{1F50A} Voice replies: on" : "\u{1F507} Voice replies: off";
+  speakToggle.setAttribute("aria-pressed", String(vs.speakReplies));
+  stopSpeakBtn.hidden = !speaking;
+  micBtn.classList.toggle("listening", listening);
+  micBtn.setAttribute("aria-pressed", String(listening));
+  micBtn.setAttribute("aria-label", listening ? "Stop voice input" : "Start voice input");
+}
+
+function speakText(text) {
+  voice.speak(text, vs, {
+    onStart() {
+      speaking = true;
+      setOrb("speaking", "Speaking");
+      updateVoiceUi();
+    },
+    onEnd() {
+      speaking = false;
+      if (!busy) setOrb("idle", "Idle");
+      updateVoiceUi();
+    }
+  });
+}
+
+function stopListening() {
+  if (listening && recognizer) recognizer.stop();
+}
+
+function toggleListening() {
+  if (listening) return stopListening();
+  if (!voice.canListen) {
+    return showNotice("Voice input is not supported in this browser. Try Chrome on Android or desktop.");
+  }
+  if (busy) return;
+  voice.stopSpeaking();
+  clearNotice();
+  const base = input.value.trim();
+  recognizer = voice.createRecognizer(vs.recLang, {
+    onText(t) {
+      input.value = base ? base + " " + t : t; // shown in the box so you can edit before sending
+      autosize();
+    },
+    onError(code) {
+      if (code !== "aborted") showNotice(voice.errorMessage(code));
+    },
+    onEnd() {
+      listening = false;
+      updateVoiceUi();
+      input.focus();
+    }
+  });
+  try {
+    recognizer.start();
+    listening = true;
+    updateVoiceUi();
+  } catch (err) {
+    showNotice("Could not start voice input: " + err.message);
+  }
+}
+
+micBtn.addEventListener("click", toggleListening);
+
+speakToggle.addEventListener("click", () => {
+  if (!voice.canSpeak) return showNotice("Spoken replies are not supported in this browser.");
+  vs.speakReplies = !vs.speakReplies;
+  voice.saveSettings(vs);
+  if (!vs.speakReplies) voice.stopSpeaking();
+  vsSpeak.checked = vs.speakReplies;
+  updateVoiceUi();
+});
+stopSpeakBtn.addEventListener("click", () => voice.stopSpeaking());
+
+function fillVoiceList() {
+  const voices = voice.getVoices();
+  vsVoice.textContent = "";
+  const def = document.createElement("option");
+  def.value = "";
+  def.textContent = "Browser default";
+  vsVoice.appendChild(def);
+  for (const v of voices) {
+    const o = document.createElement("option");
+    o.value = v.voiceURI;
+    o.textContent = v.name + " (" + v.lang + ")";
+    vsVoice.appendChild(o);
+  }
+  vsVoice.value = vs.voiceURI;
+  if (vsVoice.value !== vs.voiceURI) vsVoice.value = "";
+}
+
+function syncVoiceSettingsUi() {
+  vsSpeak.checked = vs.speakReplies;
+  vsRate.value = vs.rate;
+  vsRateVal.textContent = Number(vs.rate).toFixed(1) + "x";
+  vsVol.value = vs.volume;
+  vsVolVal.textContent = Math.round(vs.volume * 100) + "%";
+  vsLang.value = vs.recLang;
+  fillVoiceList();
+  const notes = [];
+  if (!voice.canSpeak) notes.push("Spoken replies are not supported in this browser.");
+  if (!voice.canListen) notes.push("Voice input is not supported in this browser (try Chrome).");
+  vsNote.textContent = notes.join(" ");
+  vsNote.hidden = notes.length === 0;
+}
+
+function persistVoice() {
+  voice.saveSettings(vs);
+  updateVoiceUi();
+}
+vsSpeak.addEventListener("change", () => { vs.speakReplies = vsSpeak.checked; if (!vs.speakReplies) voice.stopSpeaking(); persistVoice(); });
+vsVoice.addEventListener("change", () => { vs.voiceURI = vsVoice.value; persistVoice(); });
+vsRate.addEventListener("input", () => { vs.rate = Number(vsRate.value); vsRateVal.textContent = vs.rate.toFixed(1) + "x"; persistVoice(); });
+vsVol.addEventListener("input", () => { vs.volume = Number(vsVol.value); vsVolVal.textContent = Math.round(vs.volume * 100) + "%"; persistVoice(); });
+vsLang.addEventListener("change", () => { vs.recLang = vsLang.value; persistVoice(); });
+$("vsTest").addEventListener("click", () => {
+  if (!voice.canSpeak) return setMsg(accMsg, "Spoken replies are not supported in this browser.", "err");
+  speakText("LUXION online. How can I assist you today?");
+});
+voice.onVoicesChanged(fillVoiceList);
 
 // ---- Light particle background (skipped if reduced motion) ----
 function startParticles() {
@@ -627,6 +780,7 @@ function startParticles() {
 // ---- Init ----
 renderHistory();
 setOrb("idle", "Idle");
+updateVoiceUi();
 checkBackend();
 startParticles();
 // Until Supabase reports the session, show the login screen (hidden automatically if already logged in).
