@@ -1,10 +1,16 @@
-// LUXION AI - Phase 3
-// Login (Supabase Auth) + cloud chat history (Supabase Postgres) + AI chat (Cloudflare Worker -> Gemini).
+// LUXION AI
+// Login (Supabase Auth), cloud chat history (Supabase Postgres), AI chat (Cloudflare Worker -> Gemini),
+// voice, file analysis, Study Mode and Coding Lab.
 
 import { WORKER_URL, MAX_CONTEXT_MESSAGES } from "./config.js";
 import * as auth from "./auth.js";
 import * as db from "./db.js";
 import * as voice from "./voice.js";
+import * as files from "./files.js";
+import * as rich from "./rich.js";
+import * as study from "./study.js";
+import * as coding from "./coding.js";
+import * as appearance from "./settings.js";
 
 const GREETING = "LUXION online. How can I assist you today?";
 
@@ -59,6 +65,27 @@ const vsVolVal = $("vsVolVal");
 const vsLang = $("vsLang");
 const vsNote = $("vsNote");
 
+const modeTabs = $("modeTabs");
+const studyPanel = $("studyPanel");
+const codePanel = $("codePanel");
+const studyLevel = $("studyLevel");
+const studyTopic = $("studyTopic");
+const codeLang = $("codeLang");
+const codeInput = $("codeInput");
+const codeNotes = $("codeNotes");
+
+const attachBtn = $("attachBtn");
+const fileInput = $("fileInput");
+const attachBar = $("attachBar");
+const attachThumb = $("attachThumb");
+const attachName = $("attachName");
+const attachMeta = $("attachMeta");
+const attachProgress = $("attachProgress");
+const attachQuick = $("attachQuick");
+
+const apTheme = $("apTheme");
+const apMotion = $("apMotion");
+
 // ---- State ----
 let user = null;
 let displayName = "";
@@ -72,6 +99,9 @@ let vs = voice.loadSettings(); // voice settings (this device only)
 let recognizer = null;
 let listening = false;
 let speaking = false;
+let mode = "chat"; // "chat" | "study" | "code"
+let attachment = null; // null | { status: "processing" | "ready", name, ... }
+let ap = appearance.loadAppearance(); // theme settings (this device only)
 
 // ---- Helpers ----
 function setOrb(state, label) {
@@ -117,7 +147,10 @@ function addBubble(role, text) {
     div.appendChild(meta);
   }
   const body = document.createElement("div");
-  body.textContent = text; // textContent keeps text safe (no HTML injection)
+  // Rendering uses textContent/DOM nodes only, so message text can never inject HTML.
+  if (role === "ai" && text !== GREETING) rich.renderAi(body, text);
+  else if (role === "user") rich.renderRich(body, text);
+  else body.textContent = text;
   div.appendChild(body);
 
   if (role === "ai" && text !== GREETING) {
@@ -252,6 +285,8 @@ async function deleteChat(c) {
 }
 
 function startNewChat() {
+  clearAttachment();
+  voice.stopSpeaking();
   if (busy && controller) controller.abort();
   current = null;
   chat.textContent = "";
@@ -289,7 +324,9 @@ async function persist(conv, userText, userAt, aiText, aiAt) {
       conv.id = row.id;
       conversations.unshift(conv);
     }
-    await db.saveExchange(conv.id, userText, userAt, aiText, aiAt);
+    const LIMIT = 19900; // database allows 20,000 characters per message
+    const clipped = aiText.length > LIMIT ? aiText.slice(0, LIMIT) + "\n\n[Reply shortened when saving]" : aiText;
+    await db.saveExchange(conv.id, userText.slice(0, LIMIT), userAt, clipped, aiAt);
     conv.updated_at = aiAt;
     conversations = [conv, ...conversations.filter((x) => x !== conv)];
     renderHistory();
@@ -299,28 +336,76 @@ async function persist(conv, userText, userAt, aiText, aiAt) {
 }
 
 // ---- Sending ----
-async function handleSend(text) {
+// Builds the messages sent to the Worker. Messages that carried a file send the file text;
+// if the conversation gets too long, older file text is dropped first.
+function buildPayload(conv) {
+  const recent = conv.messages.slice(-MAX_CONTEXT_MESSAGES);
+  let imageBudget = 3;
+  const out = recent.map((m) => ({ role: m.role, content: m.payload ?? m.content, src: m }));
+  for (let i = out.length - 1; i >= 0; i--) {
+    const imgs = out[i].src.images;
+    if (imgs && imgs.length && imageBudget >= imgs.length) {
+      out[i].images = imgs;
+      imageBudget -= imgs.length;
+    }
+  }
+  const MAX_CHARS = 110000;
+  let total = out.reduce((n, m) => n + m.content.length, 0);
+  for (let i = 0; i < out.length - 1 && total > MAX_CHARS; i++) {
+    if (out[i].src.payload) {
+      total -= out[i].content.length - out[i].src.content.length;
+      out[i].content = out[i].src.content;
+    }
+  }
+  return out.map((m) => (m.images ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content }));
+}
+
+function modeOptions(meta) {
+  if (mode === "study") return { level: studyLevel.value, task: meta.task || "followup" };
+  if (mode === "code") return { language: codeLang.value, task: meta.task || "chat" };
+  return {};
+}
+
+async function handleSend(text, meta = {}) {
   if (!user) {
     showAuth("login");
-    return;
+    return false;
   }
+  if (busy) return false;
+  if (attachment && attachment.status === "processing") {
+    showNotice("Please wait for the file to finish processing.");
+    return false;
+  }
+  const att = attachment && attachment.status === "ready" ? attachment : null;
+
   if (!current) {
-    current = { id: null, title: text.slice(0, 40), updated_at: null, messages: [] };
+    const prefix = mode === "study" ? "Study: " : mode === "code" ? "Code: " : "";
+    current = { id: null, title: (prefix + (meta.title || text)).replace(/\s+/g, " ").slice(0, 60), updated_at: null, messages: [] };
     chatTitle.textContent = current.title;
   }
   stopListening();
   voice.stopSpeaking();
   const conv = current;
   const userAt = new Date().toISOString();
-  conv.messages.push({ role: "user", content: text });
-  addBubble("user", text);
+
+  // What is saved/shown vs. what is sent to the AI
+  const stored = att ? text + "\n\n" + files.attachmentMarker(att) : text;
+  const msg = { role: "user", content: stored };
+  if (att) {
+    msg.payload = files.buildFileBlock(att) + "\n\n" + text;
+    if (att.image) msg.images = [att.image];
+  }
+  conv.messages.push(msg);
+  addBubble("user", stored);
+  if (att) clearAttachment();
 
   setBusy(true);
   setOrb("thinking", "Thinking");
   const loading = addBubble("system", "LUXION is thinking...");
   controller = new AbortController();
 
-  const payload = conv.messages.slice(-MAX_CONTEXT_MESSAGES).map((m) => ({ role: m.role, content: m.content }));
+  const payload = buildPayload(conv);
+  let ok = false;
 
   try {
     const session = await auth.getSession();
@@ -332,7 +417,7 @@ async function handleSend(text) {
         "Content-Type": "application/json",
         Authorization: "Bearer " + session.access_token
       },
-      body: JSON.stringify({ messages: payload }),
+      body: JSON.stringify({ messages: payload, mode, options: modeOptions(meta) }),
       signal: controller.signal
     });
 
@@ -352,23 +437,28 @@ async function handleSend(text) {
     if (current === conv) addBubble("ai", data.reply);
     setOrb("idle", "Idle");
     if (vs.speakReplies && current === conv) speakText(data.reply);
-    await persist(conv, text, userAt, data.reply, aiAt);
+    ok = true;
+    await persist(conv, stored, userAt, data.reply, aiAt);
   } catch (err) {
     loading.remove();
-    conv.messages.pop(); // drop the unanswered user message
+    if (!ok) {
+      conv.messages.pop(); // drop the unanswered user message
+      if (att && !attachment) setAttachment(att); // give the file back so you can retry
+    }
     if (err.name === "AbortError") {
       addBubble("system", "Generation stopped.");
       setOrb("idle", "Idle");
     } else {
-      const msg = err instanceof TypeError ? "Network error: could not reach the backend." : err.message;
-      showNotice(msg);
-      addBubble("system", msg);
+      const m = err instanceof TypeError ? "Network error: could not reach the backend." : err.message;
+      showNotice(m);
+      addBubble("system", m);
       setOrb("error", "Error");
     }
   } finally {
     setBusy(false);
     controller = null;
   }
+  return ok;
 }
 
 composer.addEventListener("submit", (e) => {
@@ -377,7 +467,7 @@ composer.addEventListener("submit", (e) => {
     if (controller) controller.abort();
     return;
   }
-  const text = input.value.trim();
+  const text = input.value.trim() || (attachment && attachment.status === "ready" ? "Please analyze the attached file." : "");
   if (!text) return;
   input.value = "";
   autosize();
@@ -517,6 +607,7 @@ function openAccount() {
   accName.value = displayName;
   setMsg(accMsg, "");
   syncVoiceSettingsUi();
+  syncAppearanceUi();
   accountOverlay.hidden = false;
   closeDrawer();
   accName.focus();
@@ -583,6 +674,7 @@ async function onSignedIn(session, force) {
 }
 
 function onSignedOut() {
+  clearAttachment();
   voice.stopSpeaking();
   stopListening();
   if (busy && controller) controller.abort();
@@ -733,6 +825,168 @@ $("vsTest").addEventListener("click", () => {
 });
 voice.onVoicesChanged(fillVoiceList);
 
+// ---- Modes: Chat / Study / Code Lab ----
+function setMode(next) {
+  mode = next;
+  document.body.dataset.mode = next;
+  for (const b of modeTabs.querySelectorAll(".mode-btn")) b.setAttribute("aria-pressed", String(b.dataset.mode === next));
+  studyPanel.hidden = next !== "study";
+  codePanel.hidden = next !== "code";
+  input.placeholder = next === "study" ? "Follow-up question..." : next === "code" ? "Ask about code..." : "Message LUXION...";
+}
+modeTabs.addEventListener("click", (e) => {
+  const b = e.target.closest(".mode-btn");
+  if (b && !busy) setMode(b.dataset.mode);
+});
+
+// Study Mode actions
+$("studyActions").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-task]");
+  if (!b) return;
+  clearNotice();
+  try {
+    const hasFile = Boolean(attachment && attachment.status === "ready");
+    const p = study.buildStudyPrompt(b.dataset.task, studyTopic.value, hasFile);
+    handleSend(p.text, { task: p.task, title: p.title });
+  } catch (err) {
+    showNotice(err.message);
+  }
+});
+
+// Coding Lab actions
+for (const l of coding.LANGUAGES) {
+  const o = document.createElement("option");
+  o.value = l;
+  o.textContent = l;
+  codeLang.appendChild(o);
+}
+$("codeActions").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-action]");
+  if (!b) return;
+  clearNotice();
+  try {
+    const p = coding.buildCodePrompt({ action: b.dataset.action, language: codeLang.value, code: codeInput.value, notes: codeNotes.value });
+    handleSend(p.text, { task: p.task, title: p.title });
+  } catch (err) {
+    showNotice(err.message);
+  }
+});
+
+// ---- File attachments ----
+fileInput.accept = files.ACCEPT;
+
+function clearAttachment() {
+  attachment = null;
+  attachBar.hidden = true;
+  attachThumb.hidden = true;
+  attachThumb.removeAttribute("src");
+  attachProgress.hidden = true;
+  attachQuick.textContent = "";
+  fileInput.value = "";
+}
+
+function quickPrompts(att) {
+  if (att.kind === "image") return ["Describe this image", "Read the text in this image"];
+  if (att.kind === "csv" || att.kind === "json") return ["Summarize this data", "Find anything unusual"];
+  if (att.kind === "text" && att.name.match(/\.(js|mjs|ts|tsx|jsx|py|java|c|h|cpp|hpp|cs|go|rs|php|rb|swift|kt|html|htm|css|sql|sh)$/i)) {
+    return ["Explain this code", "Find bugs"];
+  }
+  return ["Summarize this", "List the key points"];
+}
+
+function setAttachment(att) {
+  attachment = att;
+  attachBar.hidden = false;
+  attachName.textContent = att.name;
+  const bits = [files.formatSize(att.size)];
+  if (att.label) bits.push(att.label);
+  attachMeta.textContent = bits.join(" · ") + (att.warnings && att.warnings.length ? " · " + att.warnings.join(" ") : "");
+  attachProgress.hidden = true;
+  if (att.preview) {
+    attachThumb.src = att.preview;
+    attachThumb.hidden = false;
+  } else {
+    attachThumb.hidden = true;
+  }
+  attachQuick.textContent = "";
+  for (const q of quickPrompts(att)) {
+    const c = document.createElement("button");
+    c.type = "button";
+    c.className = "chip";
+    c.textContent = q;
+    c.addEventListener("click", () => {
+      input.value = q;
+      autosize();
+      input.focus();
+    });
+    attachQuick.appendChild(c);
+  }
+}
+
+attachBtn.addEventListener("click", () => {
+  if (busy) return;
+  fileInput.click();
+});
+$("attachRemove").addEventListener("click", clearAttachment);
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  clearNotice();
+  const check = files.validateFile(file);
+  if (!check.ok) {
+    fileInput.value = "";
+    showNotice(check.error);
+    return;
+  }
+  // Show the file right away with a progress bar while it is read in the browser
+  const token = {};
+  attachment = { status: "processing", token };
+  attachBar.hidden = false;
+  attachThumb.hidden = true;
+  attachQuick.textContent = "";
+  attachName.textContent = file.name;
+  attachMeta.textContent = files.formatSize(file.size) + " · Reading...";
+  attachProgress.hidden = false;
+  attachProgress.value = 0;
+  try {
+    const att = await files.processFile(file, (frac, label) => {
+      if (attachment && attachment.token === token) {
+        attachProgress.value = frac;
+        attachMeta.textContent = files.formatSize(file.size) + " · " + label;
+      }
+    });
+    if (!attachment || attachment.token !== token) return; // removed or replaced meanwhile
+    att.status = "ready";
+    setAttachment(att);
+  } catch (err) {
+    if (attachment && attachment.token === token) clearAttachment();
+    showNotice(err.message);
+  }
+});
+
+// ---- Appearance (this device only) ----
+for (const [value, label] of Object.entries(appearance.THEMES)) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = label;
+  apTheme.appendChild(o);
+}
+function syncAppearanceUi() {
+  apTheme.value = ap.theme;
+  apMotion.checked = ap.reduceMotion;
+}
+apTheme.addEventListener("change", () => {
+  ap.theme = apTheme.value;
+  appearance.saveAppearance(ap);
+  appearance.applyAppearance(ap);
+});
+apMotion.addEventListener("change", () => {
+  ap.reduceMotion = apMotion.checked;
+  appearance.saveAppearance(ap);
+  appearance.applyAppearance(ap);
+});
+
 // ---- Light particle background (skipped if reduced motion) ----
 function startParticles() {
   const canvas = $("particles");
@@ -757,7 +1011,7 @@ function startParticles() {
   window.addEventListener("resize", resize);
 
   function frame() {
-    if (!document.hidden) {
+    if (!document.hidden && document.documentElement.dataset.motion !== "reduced") {
       ctx.clearRect(0, 0, w, h);
       for (const p of pts) {
         p.x += p.vx;
@@ -778,6 +1032,8 @@ function startParticles() {
 }
 
 // ---- Init ----
+appearance.applyAppearance(ap);
+setMode("chat");
 renderHistory();
 setOrb("idle", "Idle");
 updateVoiceUi();
