@@ -249,3 +249,73 @@ body {
 .field input[type="range"] { padding: 0; accent-color: var(--purple-glow); }
 .check { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; font-size: 15px; }
 .check input { width: 20px; height: 20px; accent-color: var(--purple-glow); }
+
+/* ===== Phase 4: modes, panels, files, code, flashcards, themes ===== */
+.modes { display: flex; gap: 8px; }
+.mode-btn {
+  flex: 1; padding: 8px 10px; font: inherit; font-size: 14px; cursor: pointer; border-radius: 12px;
+  background: var(--panel); color: var(--muted); border: 1px solid var(--panel-border);
+}
+.mode-btn[aria-pressed="true"] { color: var(--text); border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,229,255,.25); }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.panel > summary { padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; }
+.panel-body { padding: 0 14px 12px; max-height: 42dvh; overflow-y: auto; }
+.panel .field { margin-bottom: 8px; }
+.panel .field input, .panel .field select, .panel .field textarea { width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.chips .chip { padding: 8px 12px; font-size: 13px; }
+.banner { border-left: 3px solid var(--cyan); padding-left: 8px; }
+
+.code-area, .field textarea {
+  padding: 10px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text);
+  background: rgba(255,255,255,.05); border: 1px solid var(--panel-border); border-radius: 12px; resize: vertical;
+}
+.code-area:focus, .field textarea:focus { outline: none; border-color: var(--cyan); }
+
+/* smaller orb while a tool panel is open, to leave room on phones */
+body[data-mode="study"] .orb, body[data-mode="code"] .orb { width: 56px; height: 56px; }
+body[data-mode="study"] .orb-core, body[data-mode="code"] .orb-core { width: 32px; height: 32px; }
+body[data-mode="study"] .voice-controls, body[data-mode="code"] .voice-controls { display: none; }
+
+/* rich messages */
+.rich-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rich-text + .codeblock, .codeblock + .rich-text, .codeblock + .codeblock { margin-top: 8px; }
+.codeblock { border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; background: rgba(0,0,0,.45); margin: 8px 0; }
+.code-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; font-size: 12px; color: var(--muted); background: rgba(138,43,226,.18); }
+.code-copy { font: inherit; font-size: 12px; color: var(--cyan); background: none; border: none; cursor: pointer; padding: 6px 4px; }
+.codeblock pre { margin: 0; padding: 10px 12px; overflow-x: auto; white-space: pre; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.msg { white-space: normal; }
+
+.flashcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.flashcard {
+  min-height: 90px; padding: 12px; text-align: left; font: inherit; font-size: 14px; cursor: pointer; border-radius: 14px;
+  color: var(--text); background: rgba(138,43,226,.14); border: 1px solid var(--panel-border);
+}
+.flashcard[data-side="back"] { background: rgba(0,229,255,.1); border-color: var(--cyan); }
+
+/* attachments */
+.attach-bar { padding: 8px 10px; border-radius: 16px; background: var(--panel); border: 1px solid var(--panel-border); }
+.attach-chip { display: flex; align-items: center; gap: 10px; }
+.attach-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 10px; }
+.attach-info { flex: 1; min-width: 0; }
+.attach-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attach-meta { font-size: 12px; color: var(--muted); }
+.attach-bar progress { width: 100%; height: 6px; accent-color: var(--purple-glow); }
+.icon-btn.small { width: 36px; height: 36px; font-size: 14px; }
+
+/* themes (saved on this device) */
+:root[data-theme="cyan"] {
+  --purple: #0e7490; --purple-glow: #22d3ee; --cyan: #a78bfa; --panel-border: rgba(34,211,238,.3);
+}
+:root[data-theme="contrast"] {
+  --bg: #000; --text: #ffffff; --muted: #d6d3e6; --panel: rgba(0,0,0,.9); --panel-border: rgba(255,255,255,.7);
+  --purple: #6d28d9; --cyan: #00f0ff;
+}
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after {
+  animation: none !important; transition: none !important;
+}
+:root[data-motion="reduced"] #particles { display: none; }
