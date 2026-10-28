@@ -55,12 +55,85 @@
         </div>
       </section>
 
+      <nav class="modes" id="modeTabs" aria-label="Mode">
+        <button type="button" class="mode-btn" data-mode="chat" aria-pressed="true">Chat</button>
+        <button type="button" class="mode-btn" data-mode="study" aria-pressed="false">Study</button>
+        <button type="button" class="mode-btn" data-mode="code" aria-pressed="false">Code Lab</button>
+      </nav>
+
+      <details class="panel" id="studyPanel" open hidden>
+        <summary>Study Mode</summary>
+        <div class="panel-body">
+          <div class="field">
+            <label for="studyLevel">Level</label>
+            <select id="studyLevel">
+              <option value="beginner">Beginner</option>
+              <option value="intermediate" selected>Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="studyTopic">Topic</label>
+            <input id="studyTopic" type="text" maxlength="200" placeholder="e.g. photosynthesis, or attach a file to study">
+          </div>
+          <div class="chips" id="studyActions">
+            <button type="button" class="chip" data-task="explain">Explain</button>
+            <button type="button" class="chip" data-task="steps">Step by step</button>
+            <button type="button" class="chip" data-task="summary">Summary</button>
+            <button type="button" class="chip" data-task="questions">Practice questions</button>
+            <button type="button" class="chip" data-task="flashcards">Flashcards</button>
+            <button type="button" class="chip" data-task="revise">Revise</button>
+          </div>
+          <p class="fine">Everything is written by the AI for your topic. Ask follow-up questions in the message box below.</p>
+        </div>
+      </details>
+
+      <details class="panel" id="codePanel" open hidden>
+        <summary>Coding Lab</summary>
+        <div class="panel-body">
+          <div class="field">
+            <label for="codeLang">Language</label>
+            <select id="codeLang"></select>
+          </div>
+          <div class="chips" id="codeActions">
+            <button type="button" class="chip" data-action="explain">Explain</button>
+            <button type="button" class="chip" data-action="debug">Debug</button>
+            <button type="button" class="chip" data-action="error">Analyze error</button>
+            <button type="button" class="chip" data-action="improve">Improve</button>
+          </div>
+          <div class="field">
+            <label for="codeInput">Your code</label>
+            <textarea id="codeInput" class="code-area" rows="5" maxlength="6000" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Paste your code here"></textarea>
+          </div>
+          <div class="field">
+            <label for="codeNotes">Error message or what is going wrong (optional)</label>
+            <textarea id="codeNotes" class="code-area" rows="2" maxlength="2000" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          </div>
+          <p class="fine banner">The AI only reads and suggests code. Your code is never run or tested here, so test any suggestion yourself.</p>
+        </div>
+      </details>
+
       <section class="chat" id="chat" aria-live="polite" aria-label="Conversation"></section>
 
       <div class="notice" id="notice" role="alert" hidden></div>
 
+      <div class="attach-bar" id="attachBar" hidden>
+        <div class="attach-chip">
+          <img class="attach-thumb" id="attachThumb" alt="" hidden>
+          <div class="attach-info">
+            <div class="attach-name" id="attachName"></div>
+            <div class="attach-meta" id="attachMeta"></div>
+            <progress id="attachProgress" max="1" value="0" hidden></progress>
+          </div>
+          <button type="button" class="icon-btn small" id="attachRemove" aria-label="Remove attached file">&#10005;</button>
+        </div>
+        <p class="fine" id="attachConsent">Read in your browser only. Its text (or image) is sent to the AI when you press Send, and the file itself is not saved.</p>
+        <div class="chips" id="attachQuick"></div>
+      </div>
+      <input type="file" id="fileInput" hidden>
+
       <form class="composer" id="composer" autocomplete="off">
-        <button class="icon-btn" type="button" id="attachBtn" aria-label="Attach file (coming in Phase 4)" disabled title="Coming in Phase 4">&#128206;</button>
+        <button class="icon-btn" type="button" id="attachBtn" aria-label="Attach a file" title="Attach a file">&#128206;</button>
         <button class="icon-btn" type="button" id="micBtn" aria-label="Start voice input" aria-pressed="false">&#127908;</button>
         <label for="input" class="sr-only">Message LUXION</label>
         <textarea id="input" rows="1" placeholder="Message LUXION..." maxlength="8000"></textarea>
@@ -122,6 +195,13 @@
       </form>
       <div class="msg-line" id="accMsg" role="status" aria-live="polite"></div>
 
+      <h3>Appearance <span class="tag">this device only</span></h3>
+      <div class="field">
+        <label for="apTheme">Theme</label>
+        <select id="apTheme"></select>
+      </div>
+      <label class="check"><input type="checkbox" id="apMotion"> Reduce animations</label>
+
       <h3>Voice <span class="tag">this device only</span></h3>
       <p class="fine" id="vsNote" hidden></p>
       <label class="check"><input type="checkbox" id="vsSpeak"> Speak AI replies aloud</label>
@@ -154,6 +234,7 @@
 
       <h3>Privacy</h3>
       <p class="fine">Your chats are stored in your private Supabase database, readable only by your account. Messages you send are also sent to Google Gemini to generate replies. Do not share passwords or secrets in chat.</p>
+      <p class="fine">Attached files are read in your browser. Their text (or a resized copy of an image) is sent to Google Gemini only when you press Send. File contents are not saved to your chat history, only a note that a file was attached.</p>
       <p class="fine">Voice input uses your browser's speech service: in Chrome, your microphone audio is sent to Google to be turned into text. It only listens after you tap the mic, and you can stop it any time.</p>
       <p class="fine">Account deletion is not available in the app yet. To delete your account, ask the project owner to remove it in the Supabase dashboard (Authentication &rarr; Users).</p>
 

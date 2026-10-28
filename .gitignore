@@ -1,0 +1,14 @@
+# Never commit secrets
+.env
+.env.*
+*.pem
+*.key
+.dev.vars
+wrangler.toml.bak
+
+# Tooling / OS
+node_modules/
+.wrangler/
+.DS_Store
+Thumbs.db
+*.log
